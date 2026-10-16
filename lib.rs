@@ -146,6 +146,37 @@ impl BoardState {
         state
     }
 
+    /// Builds a board with bombs located at exactly the set bits of `mine_mask`.
+    ///
+    /// Unlike [`BoardState::new`], this bypasses the PRNG, so the layout is
+    /// pinned by `mine_mask` rather than a seed (`seed` is stored as `0`).
+    /// `num_bombs` is derived from the popcount of `mine_mask`, and the
+    /// adjacency counts are recomputed from the mask.
+    ///
+    /// This is primarily useful for deterministic test/eval fixtures, replays,
+    /// curricula, and benchmarks where a specific layout must be reproduced
+    /// exactly. A mask of `0` is a bomb-free board; a full mask has no safe
+    /// cells and can never be won.
+    pub fn from_mine_mask(mine_mask: u64, rules: Rules) -> Self {
+        let mut state = Self {
+            seed: 0,
+            num_bombs: mine_mask.count_ones() as u8,
+            move_count: 0,
+            strikes: 0,
+            rules,
+            mine_mask,
+            adj_counts: [0; 64],
+            revealed_mask: 0,
+            flagged_mask: 0,
+            detonated_mask: 0,
+            is_terminal: false,
+            is_won: false,
+        };
+
+        state.recalculate_adj_counts();
+        state
+    }
+
     fn recalculate_adj_counts(&mut self) {
         self.adj_counts = [0; 64];
         for i in 0..64 {
@@ -273,7 +304,8 @@ impl BoardState {
                         for &n in &neighbors[..n_count as usize] {
                             let n_bit = 1u64 << n;
                             // Cascade reveals unrevealed, non-flagged, non-mine cells
-                            if (self.revealed_mask & n_bit) == 0 && (self.flagged_mask & n_bit) == 0 {
+                            if (self.revealed_mask & n_bit) == 0 && (self.flagged_mask & n_bit) == 0
+                            {
                                 self.revealed_mask |= n_bit;
                                 newly_revealed += 1;
 
@@ -313,26 +345,26 @@ impl BoardState {
     ///  -0.5 = Flagged
     ///   0.0 .. 0.8 = Exposed safe count (count / 10.0)
     pub fn get_observation(&self, out: &mut [f32; 64]) {
-        for i in 0..64 {
+        for (i, slot) in out.iter_mut().enumerate() {
             let bit = 1u64 << i;
-            if (self.detonated_mask & bit) != 0 {
-                out[i] = -2.0;
+            *slot = if (self.detonated_mask & bit) != 0 {
+                -2.0
             } else if (self.flagged_mask & bit) != 0 {
-                out[i] = -0.5;
+                -0.5
             } else if (self.revealed_mask & bit) == 0 {
-                out[i] = -1.0;
+                -1.0
             } else {
-                out[i] = (self.adj_counts[i] as f32) / 10.0;
-            }
+                (self.adj_counts[i] as f32) / 10.0
+            };
         }
     }
 
     /// Returns a binary mask (1.0 = valid, 0.0 = invalid) for reveal actions [0..63].
     pub fn get_action_mask(&self, mask_out: &mut [f32; 64]) {
-        for i in 0..64 {
+        for (i, slot) in mask_out.iter_mut().enumerate() {
             let bit = 1u64 << i;
             let is_open_or_flagged = (self.revealed_mask | self.flagged_mask) & bit != 0;
-            mask_out[i] = if is_open_or_flagged { 0.0 } else { 1.0 };
+            *slot = if is_open_or_flagged { 0.0 } else { 1.0 };
         }
     }
 }
