@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>mine-sm — Minesweeper state machine harness</title>
+    <style>
+      :root {
+        --bg: #0f1220;
+        --panel: #181c2e;
+        --panel-2: #20263c;
+        --line: #2c3350;
+        --text: #e7ebf5;
+        --muted: #9aa4c0;
+        --accent: #6ea8fe;
+        --good: #4ade80;
+        --bad: #f87171;
+        --hidden: #2a3150;
+        --hidden-hi: #3a4370;
+        --revealed: #12162a;
+        --flash: #fde68a;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      }
+      header {
+        padding: 22px 24px 10px;
+        border-bottom: 1px solid var(--line);
+      }
+      header h1 { margin: 0 0 4px; font-size: 22px; letter-spacing: 0.2px; }
+      header p { margin: 0; color: var(--muted); max-width: 70ch; }
+      header a { color: var(--accent); }
+      .wrap {
+        display: grid;
+        grid-template-columns: minmax(320px, 460px) 1fr;
+        gap: 20px;
+        padding: 20px 24px 48px;
+        align-items: start;
+      }
+      @media (max-width: 860px) {
+        .wrap { grid-template-columns: 1fr; }
+      }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 14px 16px;
+      }
+      .card h2 {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--muted);
+        margin: 0 0 10px;
+      }
+      .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+      .field { display: flex; flex-direction: column; gap: 4px; }
+      .field label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+      input[type="number"] {
+        width: 78px;
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+        color: var(--text);
+        border-radius: 8px;
+        padding: 7px 9px;
+        font: inherit;
+      }
+      button {
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+        color: var(--text);
+        border-radius: 8px;
+        padding: 8px 12px;
+        font: inherit;
+        cursor: pointer;
+      }
+      button:hover { border-color: var(--accent); }
+      button:disabled { opacity: 0.5; cursor: default; }
+      button.primary { background: #24406e; border-color: #33578f; }
+      .toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+      .toggle button { border: 0; border-radius: 0; }
+      .toggle button.on { background: var(--accent); color: #0b1020; font-weight: 600; }
+
+      .board-wrap { display: flex; flex-direction: column; gap: 12px; }
+      #board {
+        display: grid;
+        grid-template-columns: repeat(8, 42px);
+        grid-template-rows: repeat(8, 42px);
+        gap: 3px;
+        user-select: none;
+      }
+      .cell {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 17px;
+        border-radius: 6px;
+        background: linear-gradient(180deg, var(--hidden-hi), var(--hidden));
+        border: 1px solid #454e7a;
+        cursor: pointer;
+        transition: background 0.12s, color 0.12s, border-color 0.12s;
+      }
+      .cell.revealed {
+        background: var(--revealed);
+        border-color: var(--line);
+        cursor: default;
+      }
+      .cell.detonated { background: #7f1d1d; border-color: #b91c1c; }
+      .cell.flagged { background: #3b2f13; border-color: #a16207; }
+      .cell.flash { animation: flash 0.5s ease-out; }
+      @keyframes flash { from { background: var(--flash); color: #111; } to {} }
+      .n1 { color: #60a5fa; } .n2 { color: #4ade80; } .n3 { color: #f87171; }
+      .n4 { color: #c084fc; } .n5 { color: #fb923c; } .n6 { color: #22d3ee; }
+      .n7 { color: #e5e7eb; } .n8 { color: #9aa4c0; }
+
+      .status { display: flex; flex-wrap: wrap; gap: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
+      .status b { color: var(--text); }
+      .status .won { color: var(--good); font-weight: 700; }
+      .status .lost { color: var(--bad); font-weight: 700; }
+
+      .grid-mini {
+        display: grid;
+        grid-template-columns: repeat(8, 1fr);
+        gap: 2px;
+        font-size: 10px;
+        font-variant-numeric: tabular-nums;
+      }
+      .grid-mini span {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 20px;
+        border-radius: 3px;
+        background: var(--panel-2);
+        color: var(--muted);
+      }
+      .legend { color: var(--muted); font-size: 12px; margin-top: 6px; }
+
+      .checks { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+      .checks li { display: flex; gap: 8px; padding: 3px 0; border-bottom: 1px dashed var(--line); }
+      .checks .ok { color: var(--good); } .checks .no { color: var(--bad); }
+      .checks .detail { color: var(--muted); margin-left: auto; }
+      .log { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--muted); min-height: 1.4em; }
+      .row { display: flex; gap: 8px; flex-wrap: wrap; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>mine-sm</h1>
+      <p>
+        A deterministic, <code>no_std</code> 8×8 Minesweeper state machine for
+        reinforcement learning. This page is a browser harness: play the board,
+        inspect the agent-facing <em>observation</em> and <em>action mask</em>,
+        auto-play a guaranteed winning or losing line, and run the conformance
+        checks that validate this JS mirror against the Rust engine.
+        <a href="https://github.com/jpeckenpaugh/mines-sm">Source &amp; docs</a>.
+      </p>
+    </header>
+
+    <div class="wrap">
+      <!-- LEFT: board + controls -->
+      <div class="board-wrap">
+        <div class="card">
+          <div class="controls">
+            <div class="field">
+              <label for="seed">Seed</label>
+              <input id="seed" type="number" value="42" min="0" step="1" />
+            </div>
+            <div class="field">
+              <label for="bombs">Bombs</label>
+              <input id="bombs" type="number" value="10" min="0" max="63" step="1" />
+            </div>
+            <div class="field">
+              <label for="strikes">Max strikes</label>
+              <input id="strikes" type="number" value="1" min="1" max="8" step="1" />
+            </div>
+            <button id="new" class="primary">New game</button>
+            <div class="toggle" role="group" aria-label="click mode">
+              <button id="mode-reveal" class="on">Reveal</button>
+              <button id="mode-flag">Flag</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div id="board" aria-label="board"></div>
+          <div class="legend">Click to act; right-click to flag. Flag mode flips left-click.</div>
+        </div>
+
+        <div class="card">
+          <div class="status">
+            <span>State: <b id="state">playing</b></span>
+            <span>Moves: <b id="moves">0</b></span>
+            <span>Strikes: <b id="strikes-out">0</b></span>
+            <span>Flags: <b id="flags">0</b></span>
+            <span>Revealed: <b id="revealed">0</b>/64</span>
+          </div>
+          <div class="log" id="log"></div>
+        </div>
+      </div>
+
+      <!-- RIGHT: agent views + auto-play + conformance -->
+      <div class="board-wrap">
+        <div class="card">
+          <h2>Auto-play (ground truth, never guesses)</h2>
+          <div class="row">
+            <button id="auto-win">Play winning line</button>
+            <button id="auto-lose">Play losing line</button>
+            <button id="detonate" disabled>Detonate a bomb</button>
+          </div>
+          <div class="legend">
+            The winning line repeatedly opens the lowest hidden safe cell; the
+            losing line opens a numbered cell then a bomb.
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Observation (agent input)</h2>
+          <div class="grid-mini" id="obs"></div>
+          <div class="legend">
+            −1 hidden · −0.5 flagged · −2 detonated · 0.0–0.8 = adjacent bombs / 10
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Action mask (1 = legal reveal)</h2>
+          <div class="grid-mini" id="mask"></div>
+        </div>
+
+        <div class="card">
+          <h2>Conformance checks <button id="run-checks" style="float:right">Run</button></h2>
+          <ul class="checks" id="checks"></ul>
+          <div class="legend" id="checks-summary">Not run yet.</div>
+        </div>
+      </div>
+    </div>
+
+    <script src="engine.js"></script>
+    <script>
+      (function () {
+        const M = window.Minesweeper;
+        const NUM_CLASS = ["", "n1", "n2", "n3", "n4", "n5", "n6", "n7", "n8"];
+
+        const els = {
+          seed: document.getElementById("seed"),
+          bombs: document.getElementById("bombs"),
+          strikes: document.getElementById("strikes"),
+          board: document.getElementById("board"),
+          state: document.getElementById("state"),
+          moves: document.getElementById("moves"),
+          strikesOut: document.getElementById("strikes-out"),
+          flags: document.getElementById("flags"),
+          revealed: document.getElementById("revealed"),
+          log: document.getElementById("log"),
+          obs: document.getElementById("obs"),
+          mask: document.getElementById("mask"),
+          checks: document.getElementById("checks"),
+          checksSummary: document.getElementById("checks-summary"),
+          runChecks: document.getElementById("run-checks"),
+          autoWin: document.getElementById("auto-win"),
+          autoLose: document.getElementById("auto-lose"),
+          detonate: document.getElementById("detonate"),
+        };
+
+        let board = null;
+        let mode = "reveal";
+        let busy = false;
+        let cells = [];
+
+        // build the board DOM once
+        for (let i = 0; i < 64; i++) {
+          const b = document.createElement("button");
+          b.className = "cell";
+          b.dataset.cell = String(i);
+          b.addEventListener("click", (e) => onCell(i, e));
+          b.addEventListener("contextmenu", (e) => {
+            e.preventDefault();
+            onCell(i, { shiftKey: true });
+          });
+          els.board.appendChild(b);
+          cells.push(b);
+        }
+
+        function newGame() {
+          const seed = Number(els.seed.value) || 0;
+          const bombs = Math.max(0, Math.min(63, Number(els.bombs.value) || 0));
+          const strikes = Math.max(1, Number(els.strikes.value) || 1);
+          board = M.fromSeed(seed, bombs, strikes);
+          render();
+          setLog("New game: seed " + seed + ", " + bombs + " bombs, max_strikes " + strikes + ".");
+        }
+
+        function render() {
+          const obs = M.observation(board);
+          for (let i = 0; i < 64; i++) {
+            const c = cells[i];
+            const cb = M.bit(i);
+            const revealed = (board.revealed & cb) !== 0n;
+            const detonated = (board.detonated & cb) !== 0n;
+            const flagged = (board.flagged & cb) !== 0n;
+
+            c.className = "cell";
+            c.textContent = "";
+            if (detonated) {
+              c.classList.add("detonated");
+              c.textContent = "✸";
+            } else if (revealed) {
+              c.classList.add("revealed");
+              if (board.adj[i] > 0) {
+                c.textContent = String(board.adj[i]);
+                c.classList.add(NUM_CLASS[board.adj[i]]);
+              }
+            } else if (flagged) {
+              c.classList.add("flagged");
+              c.textContent = "⚑";
+            }
+
+            const o = obs[i];
+            els.obs.children[i].textContent = o === -1 ? "·" : o.toFixed(1).replace(/\.0$/, ".0");
+            els.mask.children[i].textContent = M.actionMask(board)[i] ? "1" : "0";
+          }
+
+          els.moves.textContent = String(board.moveCount);
+          els.strikesOut.textContent = board.strikes + "/" + board.maxStrikes;
+          els.flags.textContent = String(M.popcount(board.flagged));
+          els.revealed.textContent = String(M.popcount(board.revealed & ~board.mineMask));
+
+          let stateText = "playing";
+          let klass = "";
+          if (board.terminal) {
+            stateText = board.won ? "won" : "lost";
+            klass = board.won ? "won" : "lost";
+          }
+          els.state.textContent = stateText;
+          els.state.className = klass;
+
+          els.autoWin.disabled = busy || board.terminal;
+          els.autoLose.disabled = busy || board.terminal;
+          els.detonate.disabled = busy || board.terminal;
+        }
+
+        function setLog(msg) {
+          els.log.textContent = msg;
+        }
+
+        function flash(cellsList) {
+          for (const i of cellsList) {
+            cells[i].classList.add("flash");
+            setTimeout(() => cells[i].classList.remove("flash"), 500);
+          }
+        }
+
+        function createdCells(before, after) {
+          const out = [];
+          for (let i = 0; i < 64; i++) {
+            const b = M.bit(i);
+            if ((after & b) !== 0n && (before & b) === 0n) out.push(i);
+          }
+          return out;
+        }
+
+        function onCell(i, e) {
+          if (busy || board.terminal) return;
+          let action = mode;
+          if (e && e.shiftKey) action = "flag";
+          doStep(i, action);
+        }
+
+        function doStep(i, action) {
+          const before = board.revealed;
+          const r = M.step(board, action, i);
+          if (r.newlyRevealed > 0) flash(createdCells(before, board.revealed));
+          render();
+          setLog(
+            action + " " + i + " -> " +
+            (r.validMove ? "valid" : "invalid") +
+            (r.hitBomb ? ", hit bomb" : "") +
+            ", newly revealed " + r.newlyRevealed +
+            (r.terminal ? " [terminal: " + (r.won ? "won" : "lost") + "]" : "")
+          );
+          return r;
+        }
+
+        async function runLine(kind) {
+          busy = true;
+          render();
+          if (kind === "win") {
+            while (!board.terminal) {
+              let cell = -1;
+              for (let c = 0; c < 64; c++) {
+                const cb = M.bit(c);
+                if ((board.mineMask & cb) === 0n && (board.revealed & cb) === 0n && (board.flagged & cb) === 0n) {
+                  cell = c;
+                  break;
+                }
+              }
+              if (cell < 0) break;
+              doStep(cell, "reveal");
+              await sleep(70);
+            }
+          } else {
+            const safe = M.safeNumberedCell(board.mineMask);
+            if (safe >= 0) {
+              doStep(safe, "reveal");
+              await sleep(250);
+            }
+            const bomb = M.lowestBomb(board.mineMask);
+            if (bomb >= 0) doStep(bomb, "reveal");
+          }
+          busy = false;
+          render();
+        }
+
+        function sleep(ms) {
+          return new Promise((res) => setTimeout(res, ms));
+        }
+
+        // buttons
+        document.getElementById("new").addEventListener("click", () => {
+          if (!busy) newGame();
+        });
+        document.getElementById("mode-reveal").addEventListener("click", () => setMode("reveal"));
+        document.getElementById("mode-flag").addEventListener("click", () => setMode("flag"));
+        function setMode(m) {
+          mode = m;
+          document.getElementById("mode-reveal").classList.toggle("on", m === "reveal");
+          document.getElementById("mode-flag").classList.toggle("on", m === "flag");
+        }
+        els.autoWin.addEventListener("click", () => runLine("win"));
+        els.autoLose.addEventListener("click", () => runLine("lose"));
+        els.detonate.addEventListener("click", () => {
+          if (busy || board.terminal) return;
+          const bomb = M.lowestBomb(board.mineMask);
+          if (bomb >= 0) doStep(bomb, "reveal");
+        });
+        els.runChecks.addEventListener("click", runChecksAndRender);
+
+        // observation / mask grids
+        for (let i = 0; i < 64; i++) {
+          const s = document.createElement("span");
+          s.textContent = "·";
+          els.obs.appendChild(s);
+          const t = document.createElement("span");
+          t.textContent = "1";
+          els.mask.appendChild(t);
+        }
+
+        function runChecksAndRender() {
+          const checks = M.runConformance();
+          els.checks.innerHTML = "";
+          let pass = 0;
+          for (const c of checks) {
+            const li = document.createElement("li");
+            li.innerHTML =
+              '<span class="' + (c.pass ? "ok" : "no") + '">' + (c.pass ? "PASS" : "FAIL") + "</span>" +
+              "<span>" + c.name + "</span>" +
+              (c.detail ? '<span class="detail">' + c.detail + "</span>" : "");
+            els.checks.appendChild(li);
+            if (c.pass) pass++;
+          }
+          els.checksSummary.textContent = pass + "/" + checks.length + " checks passed.";
+        }
+
+        newGame();
+        runChecksAndRender();
+      })();
+    </script>
+  </body>
+</html>

@@ -8,6 +8,10 @@ The crate exposes a tiny, allocation-free API: build a board from a seed, apply
 `Reveal`/`Flag` actions, and read back an observation tensor and an action mask
 shaped for a neural network.
 
+**Live demo:** <https://jpeckenpaugh.github.io/mines-sm/> — a browser harness
+that plays the board, shows the observation / action-mask encodings, auto-plays
+winning and losing lines, and runs conformance checks against the Rust engine.
+
 - **Deterministic** — the same `(seed, actions)` always produces the same game,
   and the PRNG (SplitMix64) is byte-for-byte identical on Wasm and native
   x86/ARM.
@@ -21,7 +25,7 @@ Add it as a path or git dependency in your `Cargo.toml`:
 
 ```toml
 [dependencies]
-mine-sm = { git = "https://github.com/jarad/mine-sm" }
+mine-sm = { git = "https://github.com/jpeckenpaugh/mines-sm" }
 ```
 
 The library imports as `mine_sm`.
