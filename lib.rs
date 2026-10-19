@@ -155,8 +155,10 @@ impl BoardState {
     ///
     /// This is primarily useful for deterministic test/eval fixtures, replays,
     /// curricula, and benchmarks where a specific layout must be reproduced
-    /// exactly. A mask of `0` is a bomb-free board; a full mask has no safe
-    /// cells and can never be won.
+    /// exactly. A mask of `0` is a bomb-free board. A full mask has no safe
+    /// cells and can never be won: because there is no free cell to relocate a
+    /// bomb to, the safe-first-reveal guarantee does not apply and the first
+    /// reveal detonates.
     pub fn from_mine_mask(mine_mask: u64, rules: Rules) -> Self {
         let mut state = Self {
             seed: 0,
@@ -192,18 +194,26 @@ impl BoardState {
     }
 
     /// Safe-First-Click Relocation:
-    /// If move #1 hits a bomb, relocate that single bomb to the first available
-    /// empty cell starting at index 0, and update adjacent neighbor counts.
+    /// If the first reveal hits a bomb, relocate that single bomb to the first
+    /// available empty cell starting at index 0, and update adjacent neighbor
+    /// counts. If there is no free cell to relocate to (a full-mine fixture),
+    /// the mine stays in place so the board remains unwinnable.
     fn relocate_mine(&mut self, hit_cell: u8) {
-        self.mine_mask &= !(1u64 << hit_cell);
-
+        let mut replacement = None;
         for candidate in 0..64 {
             let candidate_bit = 1u64 << candidate;
             if candidate != hit_cell && (self.mine_mask & candidate_bit) == 0 {
-                self.mine_mask |= candidate_bit;
+                replacement = Some(candidate);
                 break;
             }
         }
+
+        let Some(replacement) = replacement else {
+            return;
+        };
+
+        self.mine_mask &= !(1u64 << hit_cell);
+        self.mine_mask |= 1u64 << replacement;
         self.recalculate_adj_counts();
     }
 
@@ -257,8 +267,10 @@ impl BoardState {
                     };
                 }
 
-                // Move 1 rule: guaranteed safe initial click
-                if self.move_count == 0 && (self.mine_mask & cell_bit) != 0 {
+                // First-reveal rule: guaranteed safe initial click. Flags do not
+                // count as reveals, so flagging before the first reveal must not
+                // disable the guarantee.
+                if self.revealed_mask == 0 && (self.mine_mask & cell_bit) != 0 {
                     self.relocate_mine(action.cell);
                 }
 
@@ -360,7 +372,13 @@ impl BoardState {
     }
 
     /// Returns a binary mask (1.0 = valid, 0.0 = invalid) for reveal actions [0..63].
+    /// A terminal board has no legal actions, so the mask is all zeros.
     pub fn get_action_mask(&self, mask_out: &mut [f32; 64]) {
+        if self.is_terminal {
+            *mask_out = [0.0; 64];
+            return;
+        }
+
         for (i, slot) in mask_out.iter_mut().enumerate() {
             let bit = 1u64 << i;
             let is_open_or_flagged = (self.revealed_mask | self.flagged_mask) & bit != 0;

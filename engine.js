@@ -122,14 +122,19 @@
   }
 
   function relocate(b, hitCell) {
-    b.mineMask &= ~bit(hitCell);
+    let replacement = -1;
     for (let cand = 0; cand < 64; cand++) {
       if (cand === hitCell) continue;
       if ((b.mineMask & bit(cand)) === 0n) {
-        b.mineMask |= bit(cand);
+        replacement = cand;
         break;
       }
     }
+    // A full-mine fixture has no free cell: keep the mine in place so the
+    // board stays unwinnable.
+    if (replacement < 0) return;
+    b.mineMask &= ~bit(hitCell);
+    b.mineMask |= bit(replacement);
     b.adj = computeAdj(b.mineMask);
   }
 
@@ -150,7 +155,7 @@
     if (((b.revealed | b.flagged) & cb) !== 0n) {
       return result(false, 0, false, false, false);
     }
-    if (b.moveCount === 0 && (b.mineMask & cb) !== 0n) relocate(b, cell);
+    if (b.revealed === 0n && (b.mineMask & cb) !== 0n) relocate(b, cell);
     b.moveCount++;
 
     if ((b.mineMask & cb) !== 0n) {
@@ -207,7 +212,8 @@
   }
 
   function actionMask(b) {
-    const out = new Array(64);
+    const out = new Array(64).fill(0);
+    if (b.terminal) return out;
     for (let i = 0; i < 64; i++) {
       out[i] = (b.revealed | b.flagged) & bit(i) ? 0.0 : 1.0;
     }
@@ -318,6 +324,19 @@
     }
     add("safe first click (all 64 single-bomb boards)", safeFirst);
 
+    // A flag before the first reveal must not disable the safe-first guarantee.
+    let safeFirstAfterFlag = true;
+    for (let c = 0; c < 64; c++) {
+      const b = fromMask(bit(c), 1);
+      step(b, "flag", (c + 1) % 64);
+      const r = step(b, "reveal", c);
+      if (r.hitBomb || b.strikes !== 0) safeFirstAfterFlag = false;
+    }
+    add(
+      "safe first click survives a preceding flag (all 64 single-bomb boards)",
+      safeFirstAfterFlag
+    );
+
     // Empty board wins on the first reveal.
     const empty = fromMask(0n, 1);
     const er = step(empty, "reveal", 0);
@@ -339,6 +358,23 @@
     add(
       "shielded ladder: survive twice, lose on 3rd",
       !s1.terminal && !s2.terminal && !s3.terminal && s4.terminal && !s4.won && sb.strikes === 3
+    );
+
+    // A terminal board has no legal actions: the action mask is all zeros.
+    const lost = fromMask(bit(0) | bit(1), 1);
+    step(lost, "reveal", 0); // first reveal is safe
+    step(lost, "reveal", 1); // second reveal detonates
+    add(
+      "terminal loss zeroes the action mask",
+      lost.terminal && !lost.won && actionMask(lost).every((m) => m === 0)
+    );
+
+    // A full-mine fixture has no safe cells and can never be won.
+    const full = fromMask(MASK64, 1);
+    const fr = step(full, "reveal", 0);
+    add(
+      "full-mine fixture detonates and never wins",
+      fr.hitBomb && fr.terminal && !fr.won && full.won === false
     );
 
     return checks;
