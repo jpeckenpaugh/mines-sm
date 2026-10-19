@@ -190,6 +190,37 @@ fn safe_first_click_does_not_relocate_when_cell_is_safe() {
     assert_eq!(board.mine_mask, before);
 }
 
+#[test]
+fn safe_first_reveal_still_applies_after_a_flag() {
+    // Flagging is not a reveal: every single-bomb board must still relocate
+    // the bomb when the first reveal targets it.
+    for bomb in 0..64u8 {
+        let mut board = BoardState::from_mine_mask(bit(bomb), Rules::default());
+        let flag_cell = (bomb + 1) % 64;
+
+        let flagged = board.step(flag(flag_cell));
+        assert!(flagged.valid_move, "flag on bomb {bomb} should be valid");
+
+        let result = board.step(reveal(bomb));
+        assert!(result.valid_move);
+        assert!(
+            !result.hit_bomb,
+            "first reveal detonated after a flag on bomb {bomb}"
+        );
+        assert_eq!(board.strikes, 0);
+        assert_eq!(
+            board.mine_mask.count_ones(),
+            1,
+            "bomb count must be preserved on bomb {bomb}"
+        );
+        assert_eq!(
+            board.mine_mask & bit(bomb),
+            0,
+            "bomb left the clicked cell on bomb {bomb}"
+        );
+    }
+}
+
 // -----------------------------------------------------------------------------
 // Flagging
 // -----------------------------------------------------------------------------
@@ -459,6 +490,24 @@ fn action_mask_clears_flagged_and_revealed_cells() {
     }
 }
 
+#[test]
+fn action_mask_is_all_zero_after_terminal_loss() {
+    // The first reveal is safe, so open a safe cell before stepping on a mine.
+    let mut board = BoardState::from_mine_mask(bit(0) | bit(1), Rules::default());
+    let safe = board.step(reveal(0));
+    assert!(safe.valid_move && !safe.hit_bomb);
+
+    let result = board.step(reveal(1));
+    assert!(result.terminal && !result.won);
+
+    let mut mask = [0.5f32; 64];
+    board.get_action_mask(&mut mask);
+    assert!(
+        mask.iter().all(|&m| m == 0.0),
+        "a terminal board must expose no legal actions"
+    );
+}
+
 // -----------------------------------------------------------------------------
 // Deterministic layout constructor
 // -----------------------------------------------------------------------------
@@ -498,9 +547,27 @@ fn from_mine_mask_zero_is_an_empty_board() {
 
 #[test]
 fn from_mine_mask_full_board_has_no_safe_cells() {
-    let board = BoardState::from_mine_mask(u64::MAX, Rules::default());
+    let mut board = BoardState::from_mine_mask(u64::MAX, Rules::default());
     assert_eq!(board.num_bombs, 64);
     assert_eq!(board.mine_mask, u64::MAX);
+
+    // No free cell exists for safe-first-click relocation, so the first
+    // reveal detonates and the board can never be won.
+    let result = board.step(reveal(0));
+    assert!(result.valid_move);
+    assert!(result.hit_bomb);
+    assert!(result.terminal);
+    assert!(!result.won);
+    assert!(!board.is_won);
+    assert_eq!(
+        board.mine_mask,
+        u64::MAX,
+        "a full board must keep every mine"
+    );
+
+    let mut mask = [1f32; 64];
+    board.get_action_mask(&mut mask);
+    assert!(mask.iter().all(|&m| m == 0.0));
 }
 
 #[test]

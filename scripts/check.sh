@@ -70,6 +70,15 @@ if [ "$failed" -gt 0 ]; then
 fi
 echo "    tests: ${passed} passed, ${failed} failed"
 
+echo
+echo "==> node scripts/check-js.js"
+if node scripts/check-js.js; then
+    echo "    browser engine: ok"
+else
+    echo "    browser engine: FAILED"
+    fail=1
+fi
+
 if [ "$exhaustive" -eq 1 ]; then
     echo
     echo "==> cargo test --release -- --ignored (exhaustive suites; slow)"

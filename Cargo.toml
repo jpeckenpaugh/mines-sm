@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "A deterministic, no_std 8x8 Minesweeper state machine for reinforcement learning."
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/jarad/mine-sm"
+repository = "https://github.com/jpeckenpaugh/mines-sm"
 keywords = ["minesweeper", "reinforcement-learning", "no_std", "bitboard", "onnx"]
 categories = ["game-engines", "no-std", "science"]
 
@@ -13,6 +13,9 @@ name = "mine_sm"
 path = "lib.rs"
 
 [dependencies]
+
+[dev-dependencies]
+proptest = "1"
 
 [lints.rust]
 unsafe_code = "forbid"
