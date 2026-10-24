@@ -10,10 +10,14 @@
 
 "use strict";
 
-const path = require("node:path");
+// The root package.json sets "type": "module", so this file and `engine.js`
+// are both loaded as ES modules. `engine.js` is written as a classic script
+// (it must run unmodified in a browser <script> tag) and exposes its API on
+// `globalThis.Minesweeper` when `module.exports` is unavailable. Import it for
+// its side effect, then read the API off the global.
+import "../engine.js";
 
-const enginePath = path.join(__dirname, "..", "engine.js");
-const { runConformance } = require(enginePath);
+const { runConformance } = globalThis.Minesweeper;
 
 const checks = runConformance();
 let failed = 0;
